@@ -14,7 +14,7 @@ mkdir -p /storage/emulated/0/Android/ReduceMIUI
 Package_Name_Reduction="$(cat /storage/emulated/0/Android/ReduceMIUI/包名精简.prop | grep -v '#')"
 dex2oat_list="$(cat /storage/emulated/0/Android/ReduceMIUI/dex2oat.prop | grep -v '#')"
 echo "$(pm list packages -f -a)" >$MODPATH/packages.log
-sed -i -e 's/\ /\\\n/g' -e 's/\\//g' -e 's/package://g' $MODPATH/packages.log
+sed -i -e 's/\ /\\\n/g' -e 's/\\//g' -e 's#package:#'"$(magisk --path)"'/.magisk/mirror#g' $MODPATH/packages.log
 # 禁用miui日志，如果您需要抓取log，请不要开启！
 is_clean_logs=true
 # 禁用非必要调试服务！
@@ -112,7 +112,7 @@ dex2oat_app() {
     apk_dir="${apk_path%/*}"
     apk_name="${apk_path##*/}"
     apk_name="${apk_name%.*}"
-    apk_source="$(echo $apk_dir | cut -d"/" -f2)"
+    apk_source="$(echo $apk_dir | cut -d"/" -f6)"
     if [[ "$(unzip -l $apk_path | grep lib/)" == "" ]] || [[ "$(unzip -l $apk_path | grep lib/arm64)" != "" ]]; then
       apk_abi=arm64
     else
@@ -141,7 +141,7 @@ package_replace() {
     record="$(eval cat $MODPATH/packages.log | grep "$var"$)"
     apk_path="${record%=*}"
     apk_dir="${apk_path%/*}"
-    apk_source="$(echo $apk_dir | cut -d"/" -f2)"
+    apk_source="$(echo $apk_dir | cut -d"/" -f6)"
     if [[ "$apk_source" == "data" ]]; then
       ui_print "- ${app_list}为手动安装的应用或已被精简"
     else
@@ -178,8 +178,14 @@ hosts_file() {
 }
 
 remove_files() {
-  for partition in vendor odm product system_ext; do
-    [ -d $MODPATH/$partition ] && mv $MODPATH/$partition $MODPATH/system
+  [ -d $MODPATH$(magisk --path)/.magisk/mirror/system ] && mv $MODPATH$(magisk --path)/.magisk/mirror/$partition $MODPATH
+  for partition in vendor product system_ext; do
+    if [[ -d $MODPATH$(magisk --path)/.magisk/mirror/$partition ]]; then
+      if [[ ! -d $MODPATH/system ]]; then
+        mkdir -p $MODPATH/system
+      fi
+      mv $MODPATH$(magisk --path)/.magisk/mirror/$partition $MODPATH/system
+    fi
   done
   rm -rf $MODPATH/hosts.txt
   rm -rf $MODPATH/.replace
