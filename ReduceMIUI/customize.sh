@@ -1,20 +1,6 @@
 #!/bin/bash
 SKIPUNZIP=0
-ui_print "- Magisk 版本: $MAGISK_VER_CODE"
-if [ "$MAGISK_VER_CODE" -lt 24000 ]; then
-  ui_print "*********************************************"
-  ui_print "! 请安装 Magisk 24.0+"
-  abort "*********************************************"
-fi
-rm -rf /data/system/package_cache
-# ReduceMIUI自定义配置文件目录
-mkdir -p /storage/emulated/0/Android/ReduceMIUI
-[ ! -f /storage/emulated/0/Android/ReduceMIUI/包名精简.prop ] && cp ${MODPATH}/包名精简.prop /storage/emulated/0/Android/ReduceMIUI
-[ ! -f /storage/emulated/0/Android/ReduceMIUI/dex2oat.prop ] && cp ${MODPATH}/dex2oat.prop /storage/emulated/0/Android/ReduceMIUI
-Package_Name_Reduction="$(cat /storage/emulated/0/Android/ReduceMIUI/包名精简.prop | grep -v '#')"
-dex2oat_list="$(cat /storage/emulated/0/Android/ReduceMIUI/dex2oat.prop | grep -v '#')"
-echo "$(pm list packages -f -a)" >$MODPATH/packages.log
-sed -i -e 's/\ /\\\n/g' -e 's/\\//g' -e 's#package:#'"$(magisk --path)"'/.magisk/mirror#g' $MODPATH/packages.log
+
 # 禁用miui日志，如果您需要抓取log，请不要开启！
 is_clean_logs=true
 # 禁用非必要调试服务！
@@ -27,12 +13,82 @@ dex2oat_mode="everything"
 # 获取系统SDK
 SDK="$(getprop ro.system.build.version.sdk)"
 
-touch_replace() {
-  mkdir -p $1
-  touch $1/.replace
-  chown root:root $1/.replace
-  chmod 0644 $1/.replace
-}
+if [[ $KSU == true ]]; then
+  ui_print "- KernelSU 用户空间当前的版本号: $KSU_VER_CODE"
+  ui_print "- KernelSU 内核空间当前的版本号: $KSU_KERNEL_VER_CODE"
+else
+  ui_print "- Magisk 版本: $MAGISK_VER_CODE"
+  if [ "$MAGISK_VER_CODE" -lt 26000 ]; then
+    ui_print "*********************************************"
+    ui_print "! 请安装 Magisk 26.0+"
+    abort "*********************************************"
+  fi
+fi
+
+rm -rf /data/system/package_cache
+
+# 获取已安装应用信息
+echo "$(pm list packages -f -a)" >$MODPATH/packages.log
+sed -i -e 's/\ /\\\n/g' -e 's/\\//g' -e 's/package://g' $MODPATH/packages.log
+
+# ReduceMIUI自定义配置文件目录
+mkdir -p /storage/emulated/0/Android/ReduceMIUI
+[ ! -f /storage/emulated/0/Android/ReduceMIUI/包名精简.prop ] && cp ${MODPATH}/包名精简.prop /storage/emulated/0/Android/ReduceMIUI
+[ ! -f /storage/emulated/0/Android/ReduceMIUI/dex2oat.prop ] && cp ${MODPATH}/dex2oat.prop /storage/emulated/0/Android/ReduceMIUI
+Package_Name_Reduction="$(cat /storage/emulated/0/Android/ReduceMIUI/包名精简.prop | grep -v '#')"
+dex2oat_list="$(cat /storage/emulated/0/Android/ReduceMIUI/dex2oat.prop | grep -v '#')"
+if [[ ! -f /storage/emulated/0/Android/ReduceMIUI/history.prop ]]; then
+  touch /storage/emulated/0/Android/ReduceMIUI/history.prop
+else
+  sort -u /storage/emulated/0/Android/ReduceMIUI/history.prop >/storage/emulated/0/Android/ReduceMIUI/history_new.prop
+  rm -rf /storage/emulated/0/Android/ReduceMIUI/history.prop
+  mv /storage/emulated/0/Android/ReduceMIUI/history_new.prop /storage/emulated/0/Android/ReduceMIUI/history.prop
+  history_list="$(cat /storage/emulated/0/Android/ReduceMIUI/history.prop)"
+fi
+
+if [[ $KSU == true ]]; then
+  touch_replace() {
+    if [[ "$1" != system ]]; then
+      if [[ "$1" == odm ]]; then
+        mkdir -p "$MODPATH"/system/vendor"$2"
+        rm -rf "$MODPATH"/system/vendor"$2"
+        mknod "$MODPATH"/system/vendor"$2" c 0 0
+      else
+        mkdir -p "$MODPATH"/system"$2"
+        rm -rf "$MODPATH"/system"$2"
+        mknod "$MODPATH"/system"$2" c 0 0
+      fi
+    else
+      mkdir -p "$MODPATH""$2"
+      rm -rf "$MODPATH""$2"
+      mknod "$MODPATH""$2" c 0 0
+    fi
+    echo "$2" >>/storage/emulated/0/Android/ReduceMIUI/history.prop
+  }
+else
+  touch_replace() {
+    if [[ "$1" != system ]]; then
+      if [[ "$1" == odm ]]; then
+        mkdir -p "$MODPATH"/system/vendor"$2"
+        touch "$MODPATH"/system/vendor"$2"/.replace
+        chown root:root "$MODPATH"/system/vendor"$2"/.replace
+        chmod 0644 "$MODPATH"/system/vendor"$2"/.replace
+      else
+        mkdir -p "$MODPATH"/system"$2"
+        touch "$MODPATH"/system"$2"/.replace
+        chown root:root "$MODPATH"/system"$2"/.replace
+        chmod 0644 "$MODPATH"/system"$2"/.replace
+      fi
+    else
+      mkdir -p "$MODPATH""$2"
+      touch "$MODPATH""$2"/.replace
+      chown root:root "$MODPATH""$2"/.replace
+      chmod 0644 "$MODPATH""$2"/.replace
+    fi
+    echo "$2" >>/storage/emulated/0/Android/ReduceMIUI/history.prop
+
+  }
+fi
 
 reduce_test_services() {
   if [ "$is_reduce_test_services" == "true" ]; then
@@ -112,24 +168,37 @@ dex2oat_app() {
     apk_dir="${apk_path%/*}"
     apk_name="${apk_path##*/}"
     apk_name="${apk_name%.*}"
-    apk_source="$(echo $apk_dir | cut -d"/" -f6)"
+    apk_source="$(echo $apk_dir | cut -d"/" -f2)"
     if [[ "$(unzip -l $apk_path | grep lib/)" == "" ]] || [[ "$(unzip -l $apk_path | grep lib/arm64)" != "" ]]; then
       apk_abi=arm64
     else
       apk_abi=arm
     fi
-    if [[ "$apk_source" == "data" ]]; then
-      if [ "$(unzip -l $apk_path | grep classes.dex)" != "" ]; then
-        rm -rf "$apk_dir"/oat/$apk_abi/*
-        dex2oat --dex-file="$apk_path" --compiler-filter=$dex2oat_mode --instruction-set=$apk_abi --oat-file="$apk_dir"/oat/$apk_abi/base.odex
-        ui_print "- ${app_list}: 成功"
+    if [ -n "$apk_source" ]; then
+      if [[ "$apk_source" == "data" ]]; then
+        if [ "$(unzip -l $apk_path | grep classes.dex)" != "" ]; then
+          rm -rf "$apk_dir"/oat/$apk_abi/*
+          dex2oat --dex-file="$apk_path" --compiler-filter=$dex2oat_mode --instruction-set=$apk_abi --oat-file="$apk_dir"/oat/$apk_abi/base.odex
+          ui_print "- ${app_list}: 成功"
+        fi
+      else
+        if [ "$(unzip -l $apk_path | grep classes.dex)" != "" ]; then
+          if [[ "$apk_source" != system ]]; then
+            if [[ "$apk_source" == odm ]]; then
+              target_path=$MODPATH/system/vendor$apk_dir/oat/$apk_abi
+            else
+              target_path=$MODPATH/system$apk_dir/oat/$apk_abi
+            fi
+          else
+            target_path="$MODPATH""$apk_dir"/oat/$apk_abi
+          fi
+          mkdir -p "$target_path"
+          dex2oat --dex-file="$apk_path" --compiler-filter=$dex2oat_mode --instruction-set=$apk_abi --oat-file="$target_path"/"$apk_name".odex
+          ui_print "- ${app_list}: 成功"
+        fi
       fi
     else
-      if [ "$(unzip -l $apk_path | grep classes.dex)" != "" ]; then
-        mkdir -p $MODPATH$apk_dir/oat/$apk_abi
-        dex2oat --dex-file="$apk_path" --compiler-filter=$dex2oat_mode --instruction-set=$apk_abi --oat-file=$MODPATH$apk_dir/oat/$apk_abi/$apk_name.odex
-        ui_print "- ${app_list}: 成功"
-      fi
+      ui_print "- ${app_list}: 不存在"
     fi
   done
   ui_print "- 优化完成"
@@ -141,12 +210,21 @@ package_replace() {
     record="$(eval cat $MODPATH/packages.log | grep "$var"$)"
     apk_path="${record%=*}"
     apk_dir="${apk_path%/*}"
-    apk_source="$(echo $apk_dir | cut -d"/" -f6)"
-    if [[ "$apk_source" == "data" ]]; then
-      ui_print "- ${app_list}为手动安装的应用或已被精简"
-    else
-      ui_print "- 正在精简${app_list}"
-      touch_replace $MODPATH$apk_dir
+    apk_source="$(echo $apk_dir | cut -d"/" -f2)"
+    if [ -n "$apk_source" ]; then
+      if [[ "$apk_source" == "data" ]]; then
+        ui_print "- ${app_list}为手动安装的应用或已被精简"
+      else
+        ui_print "- 正在精简${app_list}"
+        touch_replace "$apk_source" "$apk_dir"
+      fi
+    fi
+  done
+  for history in ${history_list}; do
+    if [ -n "$history" ]; then
+      history_source="$(echo $history | cut -d"/" -f2)"
+      ui_print "- 正在精简${history##*/}"
+      touch_replace "$history_source" "$history"
     fi
   done
 }
@@ -178,17 +256,9 @@ hosts_file() {
 }
 
 remove_files() {
-  [ -d $MODPATH$(magisk --path)/.magisk/mirror/system ] && mv $MODPATH$(magisk --path)/.magisk/mirror/$partition $MODPATH
-  for partition in vendor product system_ext; do
-    if [[ -d $MODPATH$(magisk --path)/.magisk/mirror/$partition ]]; then
-      if [[ ! -d $MODPATH/system ]]; then
-        mkdir -p $MODPATH/system
-      fi
-      mv $MODPATH$(magisk --path)/.magisk/mirror/$partition $MODPATH/system
-    fi
-  done
   rm -rf $MODPATH/hosts.txt
-  rm -rf $MODPATH/.replace
+  rm -rf $MODPATH/包名精简.prop
+  rm -rf $MODPATH/dex2oat.prop
   rm -rf $MODPATH/packages.log
 }
 
