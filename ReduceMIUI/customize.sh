@@ -10,8 +10,6 @@ is_reduce_test_services=true
 is_use_hosts=false
 # 默认dex2oat优化编译模式
 dex2oat_mode="everything"
-# 获取系统SDK
-SDK="$(getprop ro.system.build.version.sdk)"
 
 if [[ $KSU == true ]]; then
   ui_print "- KernelSU 用户空间当前的版本号: $KSU_VER_CODE"
@@ -92,26 +90,26 @@ fi
 
 reduce_test_services() {
   if [ "$is_reduce_test_services" == "true" ]; then
-    if [ "$SDK" -le 30 ]; then
+    if [ "$API" -le 30 ]; then
       ui_print "- 正在停止ipacm-diag"
       stop ipacm-diag
       echo "stop ipacm-diag" >>$MODPATH/service.sh
     fi
-    if [ "$SDK" -ge 31 ]; then
+    if [ "$API" -ge 31 ]; then
       ui_print "- 正在停止ipacm-diag"
       stop vendor.ipacm-diag
       echo "stop vendor.ipacm-diag" >>$MODPATH/service.sh
     fi
   fi
   if [ "$is_clean_logs" == "true" ]; then
-    if [ "$SDK" -le 30 ]; then
+    if [ "$API" -le 30 ]; then
       ui_print "- 正在停止tcpdump"
       stop tcpdump
       echo "stop tcpdump" >>$MODPATH/service.sh
       ui_print "- 正在停止cnss_diag"
       stop cnss_diag
       echo "stop cnss_diag" >>$MODPATH/service.sh
-    elif [ "$SDK" -ge 31 ]; then
+    elif [ "$API" -ge 31 ]; then
       ui_print "- 正在停止tcpdump"
       stop vendor.tcpdump
       echo "stop vendor.tcpdump" >>$MODPATH/service.sh
