@@ -132,6 +132,7 @@ reduce_test_services() {
 uninstall_useless_app() {
   ui_print "- 正在禁用智能服务"
   if [ "$(pm list package | grep 'com.miui.systemAdSolution')" != "" ]; then
+    pm uninstall --user 0 com.miui.systemAdSolution >/dev/null
     pm disable com.miui.systemAdSolution >/dev/null
     echo "pm disable com.miui.systemAdSolution" >>$MODPATH/service.sh
     ui_print "- 成功禁用智能服务"
